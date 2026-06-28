@@ -1,0 +1,14 @@
+# Stage 1: Build the binary
+FROM golang:1.26-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o worker cmd/worker/main.go
+
+# Stage 2: Final lightweight execution layer
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+COPY --from=builder /app/worker .
+CMD ["./worker"]

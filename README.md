@@ -1,21 +1,23 @@
 # JobQueue — Distributed Async Job Queue in Go
 
-A production-style distributed job queue system built in Go, backed by PostgreSQL and Redis, with a pluggable AI inference backend via [Gollama](https://github.com/gmbxio/gollama).
+A production-style distributed job queue system built in Go, backed by PostgreSQL and Redis, with Groq LPU as the AI inference backend. Features a real-time dashboard UI showing live job status as it flows through the pipeline.
+
+**Live Demo:** [jobqueue.up.railway.app](https://jobqueue.up.railway.app) ← update this after Railway deployment
 
 ## Architecture
 
 ```
-Client (curl / API)
+Client (Browser / curl)
         │
         ▼
 ┌───────────────┐       ┌─────────┐
-│  Server API   │──────▶│  Redis  │  (task spike / message broker)
+│  Server API   │──────▶│  Redis  │  (message broker)
 │  (Go + mux)  │       └────┬────┘
 └───────┬───────┘            │
         │                    ▼
         │           ┌───────────────┐       ┌─────────────┐
-        │           │    Worker     │──────▶│   Gollama   │  (LLM inference)
-        │           │   Engine     │       │  FastAPI    │
+        │           │    Worker     │──────▶│  Groq API   │  (LLM inference)
+        │           │  (x3 replicas)│       │  LPU cloud  │
         │           └───────┬───────┘       └─────────────┘
         │                   │
         ▼                   ▼
@@ -25,11 +27,12 @@ Client (curl / API)
 ```
 
 **Flow:**
-1. Client POSTs a job → Server saves it to PostgreSQL as `pending`, pushes job ID to Redis
-2. Worker blocks on Redis queue (BRPop), picks up job ID
-3. Worker fetches payload from PostgreSQL, forwards to Gollama for LLM inference
-4. Worker writes result back to PostgreSQL as `completed` or `failed`
-5. Client polls `GET /jobs/{id}` to check status and retrieve result
+1. Client submits a prompt via dashboard or REST API
+2. Server saves job to PostgreSQL as `pending`, pushes job ID to Redis
+3. One of 3 worker replicas picks up the job via BRPop
+4. Worker fetches payload from PostgreSQL, forwards to Groq API for inference
+5. Worker writes result back to PostgreSQL as `completed` or `failed`
+6. Dashboard polls every 2 seconds and displays the result live
 
 ## Tech Stack
 
@@ -38,7 +41,8 @@ Client (curl / API)
 | API Server | Go, gorilla/mux |
 | Message Broker | Redis 7 |
 | Database | PostgreSQL 15 |
-| LLM Backend | Gollama (FastAPI + Ollama) |
+| LLM Inference | Groq API (LPU cloud) |
+| Frontend | Vanilla HTML/CSS/JS |
 | Containerization | Docker, Docker Compose |
 
 ## Project Structure
@@ -48,15 +52,20 @@ jobQueue/
 ├── cmd/
 │   ├── server/
 │   │   ├── main.go        # HTTP server, router, DB/Redis init
-│   │   └── handlers.go    # CreateJob, GetJobStatus, ListJobs handlers
+│   │   ├── handlers.go    # CreateJob, GetJobStatus, ListJobs, DeleteJob handlers
+│   │   └── static/
+│   │       └── index.html # Real-time dashboard UI
 │   └── worker/
-│       └── main.go        # Blocking worker loop, Gollama dispatcher
+│       └── main.go        # Blocking worker loop, Groq API dispatcher
 ├── internal/
 │   ├── db/
 │   │   └── db.go          # PostgreSQL connection + schema init
 │   └── queue/
 │       └── queue.go       # Redis connection init
 ├── docker-compose.yml
+├── Dockerfile.api
+├── Dockerfile.worker
+├── .env.example
 ├── go.mod
 └── go.sum
 ```
@@ -77,62 +86,47 @@ CREATE TABLE jobs (
 );
 ```
 
-## Prerequisites
+## Getting Started
+
+### Prerequisites
 
 - [Go 1.21+](https://golang.org/dl/)
 - [Docker + Docker Compose](https://docs.docker.com/get-docker/)
-- [Gollama](https://github.com/gmbxio/gollama) running locally with Ollama
+- [Groq API key](https://console.groq.com) — free, no credit card required
 
-## Getting Started
-
-### 1. Start PostgreSQL and Redis
+### 1. Clone the repo
 
 ```bash
+git clone https://github.com/gmbxio/jobQueue.git
+cd jobQueue
+```
+
+### 2. Set up environment variables
+
+```bash
+cp .env.example .env
+# Edit .env and add your Groq API key
+```
+
+`.env`:
+```
+GROQ_API_KEY=your_groq_api_key_here
+```
+
+### 3. Build and run with Docker
+
+```bash
+docker compose build
 docker compose up -d
 ```
 
-Verify both containers are running:
-```bash
-docker ps
+### 4. Open the dashboard
+
+```
+http://localhost:8080
 ```
 
-### 2. Start the Gollama inference backend
-
-In a separate terminal, navigate to your Gollama project and run:
-```bash
-uvicorn api:app --port 8000
-```
-
-### 3. Start the API Server
-
-```bash
-go run cmd/server/main.go cmd/server/handlers.go
-```
-
-You should see:
-```
-Bakery Cashier API is waking up...
-Successfully connected to PostgreSQL!
-PostgreSQL database schema verified.
-Successfully connected to Redis!
-Server is running on port 8080...
-```
-
-### 4. Start the Worker
-
-In another terminal:
-```bash
-go run cmd/worker/main.go
-```
-
-You should see:
-```
-Worker Engine initialized...
-Successfully connected to PostgreSQL!
-PostgreSQL database schema verified.
-Successfully connected to Redis!
-Worker listening to queue. Forwarding tasks to Gollama at: http://localhost:8000/generate
-```
+That's it. The API server, 3 worker replicas, PostgreSQL, and Redis all start together.
 
 ## API Reference
 
@@ -142,10 +136,10 @@ Worker listening to queue. Forwarding tasks to Gollama at: http://localhost:8000
 curl -X POST http://localhost:8080/jobs \
      -H "Content-Type: application/json" \
      -d '{
-       "task_type": "gollama_inference",
+       "task_type": "groq_inference",
        "payload": {
          "prompt": "Write a Python script to reverse a string",
-         "model": "gemma3:1b"
+         "model": "llama-3.1-8b-instant"
        }
      }'
 ```
@@ -171,14 +165,16 @@ curl http://localhost:8080/jobs/a0fe453c-1daf-4774-8414-10cd55ba22d6
 ```json
 {
   "id": "a0fe453c-1daf-4774-8414-10cd55ba22d6",
-  "task_type": "gollama_inference",
-  "payload": { "model": "gemma3:1b", "prompt": "Write a Python script to reverse a string" },
+  "task_type": "groq_inference",
+  "payload": { "model": "llama-3.1-8b-instant", "prompt": "Write a Python script to reverse a string" },
   "status": "completed",
   "result": {
-    "model": "gemma3:1b",
-    "response": "```python\ndef reverse_string(s):\n    return s[::-1]\n```",
-    "done": false,
-    "queue_execution_latency_seconds": 28.58
+    "model": "llama-3.1-8b-instant",
+    "response": "def reverse_string(s):\n    return s[::-1]",
+    "prompt_tokens": 18,
+    "completion_tokens": 42,
+    "total_tokens": 60,
+    "queue_execution_latency_seconds": 1.24
   }
 }
 ```
@@ -194,11 +190,11 @@ curl http://localhost:8080/jobs
 **Response:**
 ```json
 {
-  "total": 8,
+  "total": 3,
   "jobs": [
     {
       "id": "a0fe453c-1daf-4774-8414-10cd55ba22d6",
-      "task_type": "gollama_inference",
+      "task_type": "groq_inference",
       "status": "completed",
       "created_at": "2026-06-28T10:40:31.567549Z",
       "updated_at": "2026-06-28T10:41:00.174749Z"
@@ -209,31 +205,40 @@ curl http://localhost:8080/jobs
 
 ---
 
+### DELETE /jobs/{id} — Delete a job
+
+```bash
+curl -X DELETE http://localhost:8080/jobs/a0fe453c-1daf-4774-8414-10cd55ba22d6
+```
+
+---
+
 ### GET /health — Health check
 
 ```bash
 curl http://localhost:8080/health
 ```
 
-## Supported Models (via Gollama + Ollama)
+## Supported Models (via Groq free tier)
 
-Any model pulled via `ollama pull` works. Tested with:
+| Model | Best For |
+|---|---|
+| `llama-3.1-8b-instant` | Fast tasks, high volume |
+| `llama-3.3-70b-versatile` | Complex reasoning |
+| `meta-llama/llama-4-scout-17b-16e-instruct` | Long context, vision |
+| `openai/gpt-oss-20b` | General purpose |
+| `openai/gpt-oss-120b` | Premium reasoning |
+| `qwen/qwen3-32b` | Multilingual |
 
-- `gemma3:1b`
-- `llama3.2:1b`
-- `deepseek-r1:1.5b`
-- `qwen2.5:1.5b`
-
-Check available models:
-```bash
-ollama list
-```
+Get a free API key at [console.groq.com](https://console.groq.com) — no credit card required.
 
 ## Environment Variables
 
-| Variable | Default | Description |
+| Variable | Required | Description |
 |---|---|---|
-| `GOLLAMA_URL` | `http://localhost:8000/generate` | Gollama inference endpoint |
+| `GROQ_API_KEY` | ✅ Yes | Groq API key from console.groq.com |
+| `DB_HOST` | Auto | Set to `postgres` in Docker |
+| `REDIS_HOST` | Auto | Set to `redis` in Docker |
 
 ## Stopping the System
 

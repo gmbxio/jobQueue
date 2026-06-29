@@ -39,13 +39,12 @@ services:
     environment:
       - DB_HOST=postgres
       - REDIS_HOST=redis
-      # Pass the URL of your Gollama inference server running on your host machine
-      - GOLLAMA_URL=http://host.docker.internal:8000/generate 
+      - GROQ_API_KEY=${GROQ_API_KEY}
     depends_on:
       - postgres
       - redis
     deploy:
-      replicas: 3 # Scales your processing pipeline horizontally!
+      replicas: 3
 
 volumes:
   pgdata:

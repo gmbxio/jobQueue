@@ -6,59 +6,55 @@ import (
 	"log"
 	"os"
 
-	_ "github.com/lib/pq" // Postgres driver
+	_ "github.com/lib/pq"
 )
 
-// InitDB initializes the connection pool to PostgreSQL and creates the jobs table
 func InitDB() *sql.DB {
-	dbHost := os.Getenv("DB_HOST")
-	if dbHost == "" {
-		dbHost = "localhost"
-	}
+	var database *sql.DB
+	var err error
 
-	const (
-		databaseName = "job_db"
-	)
-
-	maintenanceConnStr := fmt.Sprintf("postgres://postgres:password@%s:5432/postgres?sslmode=disable", dbHost)
-	targetConnStr := fmt.Sprintf("postgres://postgres:password@%s:5432/job_db?sslmode=disable", dbHost)
-
-	maintenanceDB, err := sql.Open("postgres", maintenanceConnStr)
-	if err != nil {
-		log.Fatalf("Error opening maintenance database connection: %v", err)
-	}
-	defer maintenanceDB.Close()
-
-	if err := maintenanceDB.Ping(); err != nil {
-		log.Fatalf("Could not ping the maintenance database: %v", err)
-	}
-
-	var exists bool
-	if err := maintenanceDB.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = $1)`, databaseName).Scan(&exists); err != nil {
-		log.Fatalf("Could not check database existence: %v", err)
-	}
-
-	if !exists {
-		if _, err := maintenanceDB.Exec(`CREATE DATABASE job_db`); err != nil {
-			log.Fatalf("Could not create database %s: %v", databaseName, err)
+	// Railway provides DATABASE_URL — use it directly
+	railwayURL := os.Getenv("DATABASE_URL")
+	if railwayURL != "" {
+		fmt.Println("Cloud environment detected. Connecting to managed PostgreSQL...")
+		database, err = sql.Open("postgres", railwayURL)
+		if err != nil {
+			log.Fatalf("Error connecting to cloud database: %v", err)
 		}
-		fmt.Println("Created missing PostgreSQL database job_db.")
+	} else {
+		// Local Docker fallback
+		fmt.Println("Local environment detected. Connecting to local PostgreSQL...")
+		dbHost := os.Getenv("DB_HOST")
+		if dbHost == "" {
+			dbHost = "localhost"
+		}
+
+		maintenanceConnStr := fmt.Sprintf("postgres://postgres:password@%s:5432/postgres?sslmode=disable", dbHost)
+		targetConnStr := fmt.Sprintf("postgres://postgres:password@%s:5432/job_db?sslmode=disable", dbHost)
+
+		maintenanceDB, _ := sql.Open("postgres", maintenanceConnStr)
+		var exists bool
+		_ = maintenanceDB.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'job_db')`).Scan(&exists)
+		if !exists {
+			maintenanceDB.Exec(`CREATE DATABASE job_db`)
+			fmt.Println("Created missing PostgreSQL database job_db.")
+		}
+		maintenanceDB.Close()
+
+		database, err = sql.Open("postgres", targetConnStr)
+		if err != nil {
+			log.Fatalf("Error opening database connection: %v", err)
+		}
 	}
 
-	database, err := sql.Open("postgres", targetConnStr)
-	if err != nil {
-		log.Fatalf("Error opening database connection: %v", err)
-	}
-
-	if err := database.Ping(); err != nil {
-		log.Fatalf("Could not ping the database: %v", err)
+	if err = database.Ping(); err != nil {
+		log.Fatalf("Could not ping database: %v", err)
 	}
 
 	fmt.Println("Successfully connected to PostgreSQL!")
 
-	if _, err := database.Exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto`); err != nil {
-		log.Fatalf("Error enabling pgcrypto extension: %v", err)
-	}
+	// Enable pgcrypto for gen_random_uuid()
+	database.Exec(`CREATE EXTENSION IF NOT EXISTS pgcrypto`)
 
 	createTableSQL := `
 	CREATE TABLE IF NOT EXISTS jobs (

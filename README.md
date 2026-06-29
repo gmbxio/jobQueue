@@ -2,7 +2,7 @@
 
 A production-style distributed job queue system built in Go, backed by PostgreSQL and Redis, with Groq LPU as the AI inference backend. Features a real-time dashboard UI showing live job status as it flows through the pipeline.
 
-**Live Demo:** [jobqueue.up.railway.app](https://jobqueue.up.railway.app) ← update this after Railway deployment
+**Live Demo:** [jobqueue.up.railway.app](https://jobqueue-production-9e90.up.railway.app/)
 
 ## Architecture
 

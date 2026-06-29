@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>JobQueue — Distributed AI Job Queue</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0A0A0F;
+      --surface:   #111118;
+      --border:    #1E1E2E;
+      --border2:   #2A2A3E;
+      --cyan:      #00D4FF;
+      --cyan-dim:  rgba(0, 212, 255, 0.12);
+      --cyan-glow: rgba(0, 212, 255, 0.25);
+      --green:     #00FF94;
+      --amber:     #FFB800;
+      --red:       #FF4560;
+      --text:      #E2E2F0;
+      --muted:     #6B6B8A;
+      --mono:      'JetBrains Mono', monospace;
+      --sans:      'Inter', sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── HEADER ── */
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 18px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: rgba(10,10,15,0.92);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .logo-icon {
+      width: 28px; height: 28px;
+      background: var(--cyan);
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+    }
+
+    .logo span { color: var(--cyan); }
+
+    .header-badge {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--green);
+      background: rgba(0,255,148,0.1);
+      border: 1px solid rgba(0,255,148,0.25);
+      padding: 3px 10px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pulse {
+      width: 6px; height: 6px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    /* ── HERO ── */
+    .hero {
+      padding: 64px 32px 48px;
+      max-width: 860px;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .hero-eyebrow {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--cyan);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 600;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+
+    .hero h1 em {
+      font-style: normal;
+      color: var(--cyan);
+    }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 1rem;
+      max-width: 520px;
+      margin: 0 auto 40px;
+    }
+
+    /* ── PIPELINE RAIL (signature element) ── */
+    .pipeline {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+      margin-bottom: 56px;
+      font-family: var(--mono);
+      font-size: 0.72rem;
+    }
+
+    .pipe-step {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .pipe-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--border2);
+      border: 2px solid var(--border2);
+      transition: all 0.4s ease;
+    }
+
+    .pipe-label { color: var(--muted); }
+
+    .pipe-line {
+      width: 60px;
+      height: 2px;
+      background: var(--border2);
+      margin-bottom: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .pipe-line::after {
+      content: '';
+      position: absolute;
+      left: -100%;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--cyan);
+      animation: flow 2s linear infinite;
+    }
+
+    @keyframes flow {
+      0% { left: -100%; }
+      100% { left: 100%; }
+    }
+
+    .pipe-step.active .pipe-dot {
+      background: var(--cyan);
+      border-color: var(--cyan);
+      box-shadow: 0 0 12px var(--cyan-glow);
+    }
+
+    .pipe-step.active .pipe-label { color: var(--cyan); }
+    .pipe-step.done .pipe-dot { background: var(--green); border-color: var(--green); }
+    .pipe-step.done .pipe-label { color: var(--green); }
+
+    /* ── MAIN LAYOUT ── */
+    .main {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 32px 80px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .card-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+
+    .card-header-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--cyan);
+    }
+
+    .card-body { padding: 24px; }
+
+    /* ── FORM ── */
+    .form-group { margin-bottom: 18px; }
+
+    label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    textarea, select, input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.88rem;
+      padding: 12px 14px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      resize: vertical;
+    }
+
+    textarea:focus, select:focus, input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 0 3px var(--cyan-dim);
+    }
+
+    textarea { min-height: 100px; }
+
+    select option { background: var(--surface); }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .submit-btn {
+      width: 100%;
+      padding: 14px;
+      background: var(--cyan);
+      color: var(--bg);
+      border: none;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+      margin-top: 8px;
+    }
+
+    .submit-btn:hover { opacity: 0.88; box-shadow: 0 0 20px var(--cyan-glow); }
+    .submit-btn:active { transform: scale(0.99); }
+    .submit-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    /* ── STATUS CARD ── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+    }
+
+    .status-pill {
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .status-pending  { background: rgba(255,184,0,0.12); color: var(--amber); border: 1px solid rgba(255,184,0,0.3); }
+    .status-running  { background: rgba(0,212,255,0.12); color: var(--cyan);  border: 1px solid rgba(0,212,255,0.3); }
+    .status-completed{ background: rgba(0,255,148,0.1);  color: var(--green); border: 1px solid rgba(0,255,148,0.25); }
+    .status-failed   { background: rgba(255,69,96,0.12); color: var(--red);   border: 1px solid rgba(255,69,96,0.3); }
+
+    .job-id-display {
+      color: var(--muted);
+      font-size: 0.72rem;
+      margin-left: auto;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 280px;
+    }
+
+    /* ── PROGRESS STEPS ── */
+    .progress-steps {
+      display: flex;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      gap: 0;
+      align-items: center;
+    }
+
+    .progress-step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-family: var(--mono);
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .progress-step-circle {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: 2px solid var(--border2);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.65rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      transition: all 0.3s ease;
+    }
+
+    .progress-step.s-done .progress-step-circle {
+      border-color: var(--green);
+      background: rgba(0,255,148,0.1);
+      color: var(--green);
+    }
+
+    .progress-step.s-active .progress-step-circle {
+      border-color: var(--cyan);
+      background: var(--cyan-dim);
+      color: var(--cyan);
+      box-shadow: 0 0 10px var(--cyan-glow);
+    }
+
+    .progress-step.s-active { color: var(--cyan); }
+    .progress-step.s-done { color: var(--green); }
+
+    .progress-connector {
+      flex: 1;
+      height: 2px;
+      background: var(--border2);
+      margin: 0 8px;
+      margin-bottom: 0;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .progress-connector.c-done { background: var(--green); }
+    .progress-connector.c-active::after {
+      content: '';
+      position: absolute;
+      left: -100%; top: 0;
+      width: 100%; height: 100%;
+      background: var(--cyan);
+      animation: flow 1.2s linear infinite;
+    }
+
+    /* ── RESULT ── */
+    .result-box {
+      padding: 20px 24px;
+    }
+
+    .result-label {
+      font-family: var(--mono);
+      font-size: 0.7rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .result-response {
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 8px;
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      color: var(--text);
+      max-height: 360px;
+      overflow-y: auto;
+    }
+
+    .result-response::-webkit-scrollbar { width: 4px; }
+    .result-response::-webkit-scrollbar-track { background: transparent; }
+    .result-response::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .meta-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+
+    .meta-item-label {
+      font-family: var(--mono);
+      font-size: 0.65rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+
+    .meta-item-value {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: var(--cyan);
+    }
+
+    /* ── JOBS LIST ── */
+    .jobs-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+    }
+
+    .jobs-table th {
+      text-align: left;
+      padding: 10px 16px;
+      color: var(--muted);
+      font-size: 0.68rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      font-weight: 500;
+    }
+
+    .jobs-table td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+
+    .jobs-table tr:last-child td { border-bottom: none; }
+
+    .jobs-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .job-row-id {
+      color: var(--muted);
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: color 0.2s;
+    }
+
+    .job-row-id:hover { color: var(--cyan); }
+
+    .time-ago { color: var(--muted); font-size: 0.72rem; }
+
+    .delete-btn {
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 3px 7px;
+      border-radius: 4px;
+      transition: color 0.2s, background 0.2s;
+      font-family: var(--mono);
+    }
+
+    .delete-btn:hover {
+      color: var(--red);
+      background: rgba(255,69,96,0.1);
+    }
+
+    /* ── ERROR ── */
+    .error-box {
+      background: rgba(255,69,96,0.08);
+      border: 1px solid rgba(255,69,96,0.25);
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--red);
+      margin-top: 12px;
+    }
+
+    /* ── EMPTY STATE ── */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+
+    /* ── LOADING SPINNER ── */
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid var(--border2);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── SECTION TITLE ── */
+    .section-title {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── TOAST ── */
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 999;
+      max-width: 340px;
+    }
+
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      header { padding: 14px 18px; }
+      .hero { padding: 40px 18px 32px; }
+      .main { padding: 0 18px 60px; }
+      .form-row { grid-template-columns: 1fr; }
+      .meta-grid { grid-template-columns: 1fr 1fr; }
+      .pipeline { display: none; }
+      .job-id-display { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">⚡</div>
+    Job<span>Queue</span>
+  </div>
+  <div class="header-badge">
+    <div class="pulse"></div>
+    API LIVE
+  </div>
+</header>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-eyebrow">Distributed AI Job Queue</div>
+  <h1>Submit prompts.<br/><em>Watch them process.</em></h1>
+  <p>Jobs flow from API → Redis → Worker → Groq LPU inference. Results land in PostgreSQL.</p>
+
+  <!-- PIPELINE RAIL -->
+  <div class="pipeline" id="pipelineRail">
+    <div class="pipe-step" id="ps-client">
+      <div class="pipe-dot"></div>
+      <div class="pipe-label">CLIENT</div>
+    </div>
+    <div class="pipe-line"></div>
+    <div class="pipe-step" id="ps-api">
+      <div class="pipe-dot"></div>
+      <div class="pipe-label">API</div>
+    </div>
+    <div class="pipe-line"></div>
+    <div class="pipe-step" id="ps-redis">
+      <div class="pipe-dot"></div>
+      <div class="pipe-label">REDIS</div>
+    </div>
+    <div class="pipe-line"></div>
+    <div class="pipe-step" id="ps-worker">
+      <div class="pipe-dot"></div>
+      <div class="pipe-label">WORKER</div>
+    </div>
+    <div class="pipe-line"></div>
+    <div class="pipe-step" id="ps-groq">
+      <div class="pipe-dot"></div>
+      <div class="pipe-label">GROQ</div>
+    </div>
+    <div class="pipe-line"></div>
+    <div class="pipe-step" id="ps-db">
+      <div class="pipe-dot"></div>
+      <div class="pipe-label">POSTGRES</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- SUBMIT JOB -->
+  <div class="section-title">Submit a Job</div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-dot"></div>
+      POST /jobs
+    </div>
+    <div class="card-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Model</label>
+          <select id="modelSelect">
+            <option value="llama-3.1-8b-instant">llama-3.1-8b-instant — Fast tasks</option>
+            <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile — Complex reasoning</option>
+            <option value="meta-llama/llama-4-scout-17b-16e-instruct">llama-4-scout-17b — Long context</option>
+            <option value="openai/gpt-oss-20b">gpt-oss-20b — General purpose</option>
+            <option value="openai/gpt-oss-120b">gpt-oss-120b — Premium reasoning</option>
+            <option value="qwen/qwen3-32b">qwen3-32b — Multilingual</option>
+
+            
+            
+            
+            
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Task Type</label>
+          <input type="text" id="taskType" value="groq_inference" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Prompt</label>
+        <textarea id="promptInput" placeholder="Write a Python script to reverse a string..."></textarea>
+      </div>
+      <button class="submit-btn" id="submitBtn" onclick="submitJob()">
+        Submit Job →
+      </button>
+    </div>
+  </div>
+
+  <!-- JOB STATUS -->
+  <div id="statusSection" style="display:none;">
+    <div class="section-title">Job Status</div>
+    <div class="card" id="statusCard">
+      <div class="status-bar">
+        <div id="statusPill" class="status-pill status-pending">pending</div>
+        <span id="statusText" style="font-family:var(--mono);font-size:0.78rem;color:var(--muted);">Queued — waiting for worker</span>
+        <div class="job-id-display" id="jobIdDisplay"></div>
+      </div>
+
+      <!-- PROGRESS STEPS -->
+      <div class="progress-steps">
+        <div class="progress-step" id="step-queued">
+          <div class="progress-step-circle">1</div>
+          Queued
+        </div>
+        <div class="progress-connector" id="conn-1"></div>
+        <div class="progress-step" id="step-running">
+          <div class="progress-step-circle">2</div>
+          Running
+        </div>
+        <div class="progress-connector" id="conn-2"></div>
+        <div class="progress-step" id="step-inference">
+          <div class="progress-step-circle">3</div>
+          Inference
+        </div>
+        <div class="progress-connector" id="conn-3"></div>
+        <div class="progress-step" id="step-done">
+          <div class="progress-step-circle">4</div>
+          Done
+        </div>
+      </div>
+
+      <!-- RESULT -->
+      <div class="result-box" id="resultBox" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- ALL JOBS -->
+  <div class="section-title" style="margin-top:12px;">All Jobs</div>
+  <div class="card">
+    <div class="card-header">
+      <div class="card-header-dot"></div>
+      GET /jobs
+      <span style="margin-left:auto;cursor:pointer;color:var(--cyan);" onclick="loadJobs()">↻ Refresh</span>
+    </div>
+    <div id="jobsTableContainer">
+      <div class="empty">Loading jobs...</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <div class="toast-dot" id="toastDot"></div>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+  const API = '';  // same origin — change to 'http://your-ec2-ip:8080' when deployed
+
+  let pollInterval = null;
+  let currentJobId = null;
+
+  // ── TOAST ──
+  function showToast(msg, color = '#00D4FF') {
+    const t = document.getElementById('toast');
+    document.getElementById('toastMsg').textContent = msg;
+    document.getElementById('toastDot').style.background = color;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
+
+  // ── PIPELINE ANIMATION ──
+  function animatePipeline(stage) {
+    // stages: 'idle' | 'submitted' | 'queued' | 'running' | 'done'
+    const steps = ['ps-client','ps-api','ps-redis','ps-worker','ps-groq','ps-db'];
+    const stageMap = { idle: -1, submitted: 1, queued: 2, running: 4, done: 6 };
+    const activeIdx = stageMap[stage] ?? -1;
+    steps.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.classList.remove('active','done');
+      if (i < activeIdx) el.classList.add('done');
+      else if (i === activeIdx) el.classList.add('active');
+    });
+  }
+
+  // ── PROGRESS STEPS ──
+  function setProgress(status) {
+    const steps = ['step-queued','step-running','step-inference','step-done'];
+    const conns = ['conn-1','conn-2','conn-3'];
+
+    // For completed/failed, mark ALL steps done (all green, no active)
+    const allDone = (status === 'completed' || status === 'failed');
+
+    const statusMap = {
+      pending:   1,
+      running:   2,
+      completed: 4,
+      failed:    4,
+    };
+    const activeIdx = (statusMap[status] ?? 1) - 1;
+
+    steps.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.classList.remove('s-active','s-done');
+      if (allDone) {
+        el.classList.add('s-done');
+      } else {
+        if (i < activeIdx) el.classList.add('s-done');
+        else if (i === activeIdx) el.classList.add('s-active');
+      }
+    });
+
+    conns.forEach((id, i) => {
+      const el = document.getElementById(id);
+      el.classList.remove('c-done','c-active');
+      if (allDone) {
+        el.classList.add('c-done');
+      } else {
+        if (i < activeIdx - 1) el.classList.add('c-done');
+        else if (i === activeIdx - 1) el.classList.add('c-active');
+      }
+    });
+  }
+
+  // ── STATUS PILL ──
+  function setStatusPill(status) {
+    const pill = document.getElementById('statusPill');
+    pill.className = `status-pill status-${status}`;
+    pill.textContent = status;
+
+    const textMap = {
+      pending:   '⏳ Queued — waiting for worker to pick up',
+      running:   '⚡ Running — Groq LPU is processing your prompt',
+      completed: '✓ Completed — result ready below',
+      failed:    '✗ Failed — see error details below',
+    };
+    document.getElementById('statusText').textContent = textMap[status] || status;
+  }
+
+  // ── SUBMIT JOB ──
+  async function submitJob() {
+    const prompt = document.getElementById('promptInput').value.trim();
+    const model  = document.getElementById('modelSelect').value;
+    const taskType = document.getElementById('taskType').value.trim();
+
+    if (!prompt) { showToast('Enter a prompt first', '#FF4560'); return; }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>Submitting...';
+
+    animatePipeline('submitted');
+
+    try {
+      const res = await fetch(`${API}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task_type: taskType, payload: { prompt, model } })
+      });
+
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const data = await res.json();
+
+      currentJobId = data.job_id;
+      document.getElementById('jobIdDisplay').textContent = currentJobId;
+
+      document.getElementById('statusSection').style.display = 'block';
+      document.getElementById('resultBox').style.display = 'none';
+      document.getElementById('statusSection').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+      setStatusPill('pending');
+      setProgress('pending');
+      animatePipeline('queued');
+
+      showToast('Job queued successfully', '#00FF94');
+
+      btn.disabled = false;
+      btn.innerHTML = 'Submit Job →';
+
+      startPolling(currentJobId);
+      loadJobs();
+
+    } catch (err) {
+      showToast('Failed to submit job: ' + err.message, '#FF4560');
+      btn.disabled = false;
+      btn.innerHTML = 'Submit Job →';
+      animatePipeline('idle');
+    }
+  }
+
+  // ── POLLING ──
+  function startPolling(jobId) {
+    if (pollInterval) clearInterval(pollInterval);
+    pollInterval = setInterval(() => pollJob(jobId), 2000);
+  }
+
+  async function pollJob(jobId) {
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+
+      setStatusPill(data.status);
+      setProgress(data.status);
+
+      if (data.status === 'running') animatePipeline('running');
+
+      if (data.status === 'completed') {
+        clearInterval(pollInterval);
+        animatePipeline('done');
+        renderResult(data);
+        loadJobs();
+        showToast('Job completed!', '#00FF94');
+      }
+
+      if (data.status === 'failed') {
+        clearInterval(pollInterval);
+        animatePipeline('idle');
+        renderError(data.error_message);
+        loadJobs();
+        showToast('Job failed', '#FF4560');
+      }
+
+    } catch (err) {
+      console.error('Poll error:', err);
+    }
+  }
+
+  // ── RENDER RESULT ──
+  function renderResult(data) {
+    const box = document.getElementById('resultBox');
+    const r = data.result || {};
+    const latency = r.queue_execution_latency_seconds
+      ? r.queue_execution_latency_seconds.toFixed(2) + 's'
+      : '—';
+
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div class="result-label">Response</div>
+      <div class="result-response">${escapeHtml(r.response || 'No response content')}</div>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <div class="meta-item-label">Model</div>
+          <div class="meta-item-value">${escapeHtml(r.model || '—')}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-item-label">Latency</div>
+          <div class="meta-item-value">${latency}</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-item-label">Status</div>
+          <div class="meta-item-value" style="color:var(--green)">completed</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderError(msg) {
+    const box = document.getElementById('resultBox');
+    box.style.display = 'block';
+    box.innerHTML = `
+      <div class="result-label">Error</div>
+      <div class="error-box">${escapeHtml(msg || 'Unknown error')}</div>
+    `;
+  }
+
+  // ── LOAD ALL JOBS ──
+  async function loadJobs() {
+    const container = document.getElementById('jobsTableContainer');
+    try {
+      const res = await fetch(`${API}/jobs`);
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+
+      if (!data.jobs || data.jobs.length === 0) {
+        container.innerHTML = '<div class="empty">No jobs yet — submit one above.</div>';
+        return;
+      }
+
+      container.innerHTML = `
+        <table class="jobs-table">
+          <thead>
+            <tr>
+              <th>Job ID</th>
+              <th>Task Type</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.jobs.map(j => `
+              <tr id="row-${j.id}">
+                <td class="job-row-id" onclick="loadJobById('${j.id}')" title="Click to load status">
+                  ${j.id.substring(0,8)}…
+                </td>
+                <td>${escapeHtml(j.task_type)}</td>
+                <td><span class="status-pill status-${j.status}">${j.status}</span></td>
+                <td class="time-ago">${timeAgo(j.created_at)}</td>
+                <td>
+                  <span class="delete-btn" onclick="deleteJob('${j.id}')" title="Delete job">✕</span>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    } catch (err) {
+      container.innerHTML = `<div class="empty" style="color:var(--red)">Could not load jobs — is the server running?</div>`;
+    }
+  }
+
+  // ── LOAD JOB BY ID (click from table) ──
+  async function loadJobById(jobId) {
+    currentJobId = jobId;
+    document.getElementById('jobIdDisplay').textContent = jobId;
+    document.getElementById('statusSection').style.display = 'block';
+    document.getElementById('resultBox').style.display = 'none';
+    document.getElementById('statusSection').scrollIntoView({ behavior: 'smooth' });
+
+    if (pollInterval) clearInterval(pollInterval);
+
+    const res = await fetch(`${API}/jobs/${jobId}`);
+    const data = await res.json();
+    setStatusPill(data.status);
+    setProgress(data.status);
+
+    if (data.status === 'completed') renderResult(data);
+    else if (data.status === 'failed') renderError(data.error_message);
+    else startPolling(jobId);
+  }
+
+  // ── DELETE JOB ──
+  async function deleteJob(jobId) {
+    try {
+      const res = await fetch(`${API}/jobs/${jobId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      // Remove row from table instantly
+      const row = document.getElementById(`row-${jobId}`);
+      if (row) row.remove();
+      // If the deleted job is currently shown in status panel, hide it
+      if (currentJobId === jobId) {
+        document.getElementById('statusSection').style.display = 'none';
+        if (pollInterval) clearInterval(pollInterval);
+      }
+      showToast('Job deleted', '#FFB800');
+    } catch (err) {
+      showToast('Failed to delete job', '#FF4560');
+    }
+  }
+
+  // ── HELPERS ──
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  function timeAgo(iso) {
+    const diff = (Date.now() - new Date(iso)) / 1000;
+    if (diff < 60) return `${Math.floor(diff)}s ago`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+    return `${Math.floor(diff/86400)}d ago`;
+  }
+
+  // ── INIT ──
+  animatePipeline('idle');
+  loadJobs();
+  setInterval(loadJobs, 10000); // auto-refresh jobs list every 10s
+</script>
+</body>
+</html>

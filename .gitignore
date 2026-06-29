@@ -1,9 +1,9 @@
-# Go binaries
-server
-worker
+# Go binaries (only root-level binaries, not directories)
+/server
+/worker
 
 # Environment variables
 .env
 
 # OS specific
-.DS_Store.env
+.DS_Store

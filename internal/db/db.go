@@ -13,35 +13,49 @@ func InitDB() *sql.DB {
 	var database *sql.DB
 	var err error
 
-	// Railway provides DATABASE_URL — use it directly
-	railwayURL := os.Getenv("DATABASE_URL")
-	if railwayURL != "" {
-		fmt.Println("Cloud environment detected. Connecting to managed PostgreSQL...")
-		database, err = sql.Open("postgres", railwayURL)
+	// Prefer a full connection URL if provided (Railway / Render internal URL)
+	if dbURL := os.Getenv("DATABASE_URL"); dbURL != "" {
+		fmt.Println("Cloud environment detected. Connecting via DATABASE_URL...")
+		database, err = sql.Open("postgres", dbURL)
 		if err != nil {
 			log.Fatalf("Error connecting to cloud database: %v", err)
 		}
 	} else {
-		// Local Docker fallback
-		fmt.Println("Local environment detected. Connecting to local PostgreSQL...")
-		dbHost := os.Getenv("DB_HOST")
-		if dbHost == "" {
-			dbHost = "localhost"
+		// Build connection string from individual env vars (Render Blueprint / local Docker)
+		host := os.Getenv("DB_HOST")
+		if host == "" {
+			host = "localhost"
+		}
+		port := os.Getenv("DB_PORT")
+		if port == "" {
+			port = "5432"
+		}
+		user := os.Getenv("DB_USER")
+		if user == "" {
+			user = "postgres"
+		}
+		password := os.Getenv("DB_PASSWORD")
+		if password == "" {
+			password = "password"
+		}
+		dbName := os.Getenv("DB_NAME")
+		if dbName == "" {
+			dbName = "job_db"
 		}
 
-		maintenanceConnStr := fmt.Sprintf("postgres://postgres:password@%s:5432/postgres?sslmode=disable", dbHost)
-		targetConnStr := fmt.Sprintf("postgres://postgres:password@%s:5432/job_db?sslmode=disable", dbHost)
-
-		maintenanceDB, _ := sql.Open("postgres", maintenanceConnStr)
-		var exists bool
-		_ = maintenanceDB.QueryRow(`SELECT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'job_db')`).Scan(&exists)
-		if !exists {
-			maintenanceDB.Exec(`CREATE DATABASE job_db`)
-			fmt.Println("Created missing PostgreSQL database job_db.")
+		// On Render managed Postgres, SSL is required
+		sslMode := "disable"
+		if os.Getenv("DB_HOST") != "" && os.Getenv("DB_HOST") != "localhost" {
+			sslMode = "require"
 		}
-		maintenanceDB.Close()
 
-		database, err = sql.Open("postgres", targetConnStr)
+		connStr := fmt.Sprintf(
+			"postgres://%s:%s@%s:%s/%s?sslmode=%s",
+			user, password, host, port, dbName, sslMode,
+		)
+		fmt.Printf("Connecting to PostgreSQL at %s:%s/%s...\n", host, port, dbName)
+
+		database, err = sql.Open("postgres", connStr)
 		if err != nil {
 			log.Fatalf("Error opening database connection: %v", err)
 		}

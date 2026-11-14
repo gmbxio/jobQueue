@@ -9,29 +9,24 @@ type Model struct {
 
 var Catalog = []Model{
 	{
-		ID:           "llama-3.3-70b-versatile",
-		Label:        "Llama 3.3 70B Versatile",
-		Availability: "Production",
+		ID:           "openai/gpt-oss-20b",
+		Label:        "GPT-OSS 20B (Ultra-Fast)",
+		Availability: "Available",
 	},
 	{
-		ID:           "llama-3.1-8b-instant",
-		Label:        "Llama 3.1 8B Instant",
-		Availability: "Production",
+		ID:           "openai/gpt-oss-120b",
+		Label:        "GPT-OSS 120B (Fast)",
+		Availability: "Available",
 	},
 	{
-		ID:           "llama3-8b-8192",
-		Label:        "Llama 3 8B",
-		Availability: "Production",
+		ID:           "qwen/qwen3.8-27b",
+		Label:        "Qwen 3.8 27B (Moderate)",
+		Availability: "Available",
 	},
 	{
-		ID:           "mixtral-8x7b-32768",
-		Label:        "Mixtral 8x7B",
-		Availability: "Production",
-	},
-	{
-		ID:           "gemma2-9b-it",
-		Label:        "Gemma 2 9B IT",
-		Availability: "Production",
+		ID:           "minimaxai/minimax-m2.7",
+		Label:        "MiniMax M2.7 (Deep Thinking)",
+		Availability: "Available",
 	},
 }
 

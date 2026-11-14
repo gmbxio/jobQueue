@@ -2,13 +2,15 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/gmbxio/jobQueue/internal/db"
+	"github.com/gmbxio/jobQueue/internal/models"
 	"github.com/gmbxio/jobQueue/internal/queue"
+	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
 )
 
@@ -36,6 +38,10 @@ func main() {
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("System is healthy! Databases connected."))
+	}).Methods("GET")
+	r.HandleFunc("/models", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(models.Catalog)
 	}).Methods("GET")
 
 	// Job API routes

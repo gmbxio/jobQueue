@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
+	"github.com/gmbxio/jobQueue/internal/models"
 	"github.com/gorilla/mux"
 )
 
@@ -22,12 +24,31 @@ type JobResponse struct {
 	ErrorMsg string          `json:"error_message,omitempty"`
 }
 
+type JobPayload struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+}
+
 var ctx = context.Background()
 
 func CreateJobHandler(w http.ResponseWriter, r *http.Request) {
 	var req JobRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	var payload JobPayload
+	if err := json.Unmarshal(req.Payload, &payload); err != nil {
+		http.Error(w, "Invalid payload JSON", http.StatusBadRequest)
+		return
+	}
+	if payload.Prompt == "" {
+		http.Error(w, "Payload prompt is required", http.StatusBadRequest)
+		return
+	}
+	if !models.IsSupported(payload.Model) {
+		http.Error(w, fmt.Sprintf("Unsupported model: %s", payload.Model), http.StatusBadRequest)
 		return
 	}
 
@@ -81,6 +102,7 @@ func GetJobStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(job)
 }
+
 // ListJobsHandler (GET /jobs) - Returns all jobs with their statuses
 func ListJobsHandler(w http.ResponseWriter, r *http.Request) {
 	rows, err := dbConn.Query(`
@@ -119,7 +141,7 @@ func ListJobsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-//Delete jobs
+// Delete jobs
 func DeleteJobHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]

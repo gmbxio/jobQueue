@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gmbxio/jobQueue/internal/db"
+	"github.com/gmbxio/jobQueue/internal/models"
 	"github.com/gmbxio/jobQueue/internal/queue"
 )
 
@@ -102,8 +103,17 @@ func processJobs(id int, groqAPIKey string) {
 		}
 
 		// Validate required fields
-		if payload.Model == "" || payload.Prompt == "" {
-			errMsg := "Payload missing required fields: model and prompt"
+		if payload.Prompt == "" {
+			errMsg := "Payload missing required field: prompt"
+			log.Printf("[Worker %d][-] Job %s: %s\n", id, jobID, errMsg)
+			_, _ = dbConn.Exec(
+				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
+				errMsg, jobID,
+			)
+			continue
+		}
+		if !models.IsSupported(payload.Model) {
+			errMsg := fmt.Sprintf("Unsupported model: %s", payload.Model)
 			log.Printf("[Worker %d][-] Job %s: %s\n", id, jobID, errMsg)
 			_, _ = dbConn.Exec(
 				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,

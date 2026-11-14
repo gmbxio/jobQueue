@@ -152,7 +152,7 @@ curl -X POST http://localhost:8080/jobs \
        "task_type": "groq_inference",
        "payload": {
          "prompt": "Write a Python script to reverse a string",
-         "model": "your-model-name"
+         "model": "openai/gpt-oss-20b"
        }
      }'
 ```
@@ -179,10 +179,10 @@ curl http://localhost:8080/jobs/a0fe453c-1daf-4774-8414-10cd55ba22d6
 {
   "id": "a0fe453c-1daf-4774-8414-10cd55ba22d6",
   "task_type": "groq_inference",
-  "payload": { "model": "your-model-name", "prompt": "Write a Python script to reverse a string" },
+  "payload": { "model": "openai/gpt-oss-20b", "prompt": "Write a Python script to reverse a string" },
   "status": "completed",
   "result": {
-    "model": "your-model-name",
+    "model": "openai/gpt-oss-20b",
     "response": "def reverse_string(s):\n    return s[::-1]",
     "prompt_tokens": 18,
     "completion_tokens": 42,
@@ -231,6 +231,26 @@ curl -X DELETE http://localhost:8080/jobs/a0fe453c-1daf-4774-8414-10cd55ba22d6
 ```bash
 curl http://localhost:8080/health
 ```
+
+## Current Groq Models
+
+These model IDs are currently listed by Groq and can be used with the worker's
+chat-completion requests:
+
+| Model | Availability |
+|---|---|
+| `openai/gpt-oss-120b` | Production |
+| `openai/gpt-oss-20b` | Production |
+| `qwen/qwen3.8-27b` | Preview |
+| `openai/gpt-oss-safeguard-20b` | Preview; safety-focused |
+
+The current Groq catalog lists `qwen/qwen3.8-27b` as the available Qwen
+chat-completion model. The dashboard loads this catalog from the API's
+`GET /models` endpoint, so the frontend and worker use the same allowlist.
+
+The previously listed Llama, Llama 4 Scout, and Qwen 3 32B IDs have been
+deprecated by Groq. Check the [official model list](https://console.groq.com/docs/models)
+before adding new IDs, especially for preview models.
 
 Get a free API key at [console.groq.com](https://console.groq.com) — no credit card required.
 

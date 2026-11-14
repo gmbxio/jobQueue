@@ -84,7 +84,7 @@ databases:
   - name: jobqueue-postgres
     plan: free
     databaseName: job_db
-    user: postgres
+    user: jobqueue_user
 
   # ── Redis ────────────────────────────────────────────────────────────────────
   - name: jobqueue-redis

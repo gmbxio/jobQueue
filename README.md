@@ -2,7 +2,7 @@
 
 A production-style distributed job queue system built in Go, backed by PostgreSQL and Redis, with Groq LPU as the AI inference backend. Features a real-time dashboard UI showing live job status as it flows through the pipeline.
 
-**Live Demo:** [jobqueue.up.railway.app](https://jobqueue-production-9e90.up.railway.app/)
+**Live Demo:** [jobqueue-api-q2vj.onrender.com](https://jobqueue-api-q2vj.onrender.com/)
 
 ## Architecture
 
@@ -128,6 +128,19 @@ http://localhost:8080
 
 That's it. The API server, 3 worker replicas, PostgreSQL, and Redis all start together.
 
+### Deploying on Render
+
+The worker is configured as a free web service so Render keeps it running. In the
+Render dashboard, open the `jobqueue-worker` service and add:
+
+```
+GROQ_API_KEY=<your key from https://console.groq.com>
+```
+
+Render does not copy your local `.env` file, and the free Render plan does not
+provide a Groq API key. Without this variable, the worker stays online for its
+health check but cannot process jobs.
+
 ## API Reference
 
 ### POST /jobs — Submit a job
@@ -139,7 +152,7 @@ curl -X POST http://localhost:8080/jobs \
        "task_type": "groq_inference",
        "payload": {
          "prompt": "Write a Python script to reverse a string",
-         "model": "llama-3.1-8b-instant"
+         "model": "your-model-name"
        }
      }'
 ```
@@ -166,10 +179,10 @@ curl http://localhost:8080/jobs/a0fe453c-1daf-4774-8414-10cd55ba22d6
 {
   "id": "a0fe453c-1daf-4774-8414-10cd55ba22d6",
   "task_type": "groq_inference",
-  "payload": { "model": "llama-3.1-8b-instant", "prompt": "Write a Python script to reverse a string" },
+  "payload": { "model": "your-model-name", "prompt": "Write a Python script to reverse a string" },
   "status": "completed",
   "result": {
-    "model": "llama-3.1-8b-instant",
+    "model": "your-model-name",
     "response": "def reverse_string(s):\n    return s[::-1]",
     "prompt_tokens": 18,
     "completion_tokens": 42,
@@ -219,24 +232,13 @@ curl -X DELETE http://localhost:8080/jobs/a0fe453c-1daf-4774-8414-10cd55ba22d6
 curl http://localhost:8080/health
 ```
 
-## Supported Models (via Groq free tier)
-
-| Model | Best For |
-|---|---|
-| `llama-3.1-8b-instant` | Fast tasks, high volume |
-| `llama-3.3-70b-versatile` | Complex reasoning |
-| `meta-llama/llama-4-scout-17b-16e-instruct` | Long context, vision |
-| `openai/gpt-oss-20b` | General purpose |
-| `openai/gpt-oss-120b` | Premium reasoning |
-| `qwen/qwen3-32b` | Multilingual |
-
 Get a free API key at [console.groq.com](https://console.groq.com) — no credit card required.
 
 ## Environment Variables
 
 | Variable | Required | Description |
 |---|---|---|
-| `GROQ_API_KEY` | ✅ Yes | Groq API key from console.groq.com |
+| `GROQ_API_KEY` | Yes for job processing | Groq API key from console.groq.com; add it to the Render worker's environment |
 | `DB_HOST` | Auto | Set to `postgres` in Docker |
 | `REDIS_HOST` | Auto | Set to `redis` in Docker |
 

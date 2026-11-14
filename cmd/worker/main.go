@@ -215,9 +215,6 @@ func main() {
 
 	// Read Groq API key from environment variable
 	groqAPIKey := os.Getenv("GROQ_API_KEY")
-	if groqAPIKey == "" {
-		log.Fatal("GROQ_API_KEY environment variable is not set")
-	}
 
 	// Read concurrency from env, default to 3
 	concurrency := 3
@@ -227,12 +224,16 @@ func main() {
 		}
 	}
 
-	fmt.Printf("Starting %d concurrent worker goroutines...\n", concurrency)
+	if groqAPIKey == "" {
+		log.Println("WARNING: GROQ_API_KEY is not set; worker is running in health-check-only mode. Set GROQ_API_KEY to process jobs.")
+	} else {
+		fmt.Printf("Starting %d concurrent worker goroutines...\n", concurrency)
 
-	for i := 1; i <= concurrency; i++ {
-		go func(id int) {
-			processJobs(id, groqAPIKey)
-		}(i)
+		for i := 1; i <= concurrency; i++ {
+			go func(id int) {
+				processJobs(id, groqAPIKey)
+			}(i)
+		}
 	}
 
 	// Minimal health-check HTTP server so Render's free "web" service type

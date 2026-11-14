@@ -32,6 +32,11 @@ services:
         fromDatabase:
           name: jobqueue-postgres
           property: database
+      - key: REDIS_URL
+        fromService:
+          name: jobqueue-redis
+          type: redis
+          property: connectionString
       - key: REDIS_HOST
         fromService:
           name: jobqueue-redis
@@ -74,6 +79,11 @@ services:
         fromDatabase:
           name: jobqueue-postgres
           property: database
+      - key: REDIS_URL
+        fromService:
+          name: jobqueue-redis
+          type: redis
+          property: connectionString
       - key: REDIS_HOST
         fromService:
           name: jobqueue-redis

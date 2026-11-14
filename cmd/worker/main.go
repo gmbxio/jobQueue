@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gmbxio/jobQueue/internal/db"
@@ -47,8 +49,9 @@ type JobPayload struct {
 	Model  string `json:"model"`
 }
 
-func main() {
-	fmt.Println("JobQueue Worker Engine initialized...")
+// processJobs is the core worker loop run by each goroutine
+func processJobs(id int, groqAPIKey string) {
+	groqURL := "https://api.groq.com/openai/v1/chat/completions"
 
 	dbConn := db.InitDB()
 	defer dbConn.Close()
@@ -56,27 +59,19 @@ func main() {
 	redisClient := queue.InitRedis()
 	defer redisClient.Close()
 
-	// Read Groq API key from environment variable
-	groqAPIKey := os.Getenv("GROQ_API_KEY")
-	if groqAPIKey == "" {
-		log.Fatal("GROQ_API_KEY environment variable is not set")
-	}
-
-	groqURL := "https://api.groq.com/openai/v1/chat/completions"
-
-	fmt.Println("Worker listening to Redis queue...")
+	log.Printf("[Worker %d] Ready — listening to Redis queue...\n", id)
 
 	for {
 		// Block until a job ID arrives in the Redis queue
 		result, err := redisClient.BRPop(queue.Ctx, 0, "tasks_queue").Result()
 		if err != nil {
-			log.Printf("Redis pop error: %v\n", err)
+			log.Printf("[Worker %d] Redis pop error: %v\n", id, err)
 			time.Sleep(1 * time.Second)
 			continue
 		}
 
 		jobID := result[1]
-		fmt.Printf("\n[+] Picked up Job ID: %s\n", jobID)
+		fmt.Printf("\n[Worker %d][+] Picked up Job ID: %s\n", id, jobID)
 
 		// 1. Mark job as running
 		_, _ = dbConn.Exec(
@@ -88,7 +83,7 @@ func main() {
 		var payloadBytes []byte
 		err = dbConn.QueryRow(`SELECT payload FROM jobs WHERE id = $1`, jobID).Scan(&payloadBytes)
 		if err != nil {
-			log.Printf("[-] Failed to fetch payload for job %s: %v\n", jobID, err)
+			log.Printf("[Worker %d][-] Failed to fetch payload for job %s: %v\n", id, jobID, err)
 			_, _ = dbConn.Exec(
 				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
 				fmt.Sprintf("Failed to fetch payload: %v", err), jobID,
@@ -99,7 +94,7 @@ func main() {
 		// 3. Decode the stored payload
 		var payload JobPayload
 		if err := json.Unmarshal(payloadBytes, &payload); err != nil {
-			log.Printf("[-] Failed to parse payload for job %s: %v\n", jobID, err)
+			log.Printf("[Worker %d][-] Failed to parse payload for job %s: %v\n", id, jobID, err)
 			_, _ = dbConn.Exec(
 				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
 				fmt.Sprintf("Invalid payload format: %v", err), jobID,
@@ -110,7 +105,7 @@ func main() {
 		// Validate required fields
 		if payload.Model == "" || payload.Prompt == "" {
 			errMsg := "Payload missing required fields: model and prompt"
-			log.Printf("[-] Job %s: %s\n", jobID, errMsg)
+			log.Printf("[Worker %d][-] Job %s: %s\n", id, jobID, errMsg)
 			_, _ = dbConn.Exec(
 				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
 				errMsg, jobID,
@@ -118,8 +113,8 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("    -> Forwarding to Groq | model: %s | prompt: %.60s...\n",
-			payload.Model, payload.Prompt)
+		fmt.Printf("[Worker %d]    -> Forwarding to Groq | model: %s | prompt: %.60s...\n",
+			id, payload.Model, payload.Prompt)
 
 		// 4. Build the Groq request
 		groqReq := GroqRequest{
@@ -154,7 +149,7 @@ func main() {
 				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
 				errMsg, jobID,
 			)
-			fmt.Printf("[X] Job %s FAILED: Groq unreachable.\n", jobID)
+			fmt.Printf("[Worker %d][X] Job %s FAILED: Groq unreachable.\n", id, jobID)
 			continue
 		}
 
@@ -169,7 +164,7 @@ func main() {
 				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
 				errMsg, jobID,
 			)
-			fmt.Printf("[X] Job %s FAILED: Groq error.\n", jobID)
+			fmt.Printf("[Worker %d][X] Job %s FAILED: Groq error.\n", id, jobID)
 			continue
 		}
 
@@ -181,7 +176,7 @@ func main() {
 				`UPDATE jobs SET status = 'failed', error_message = $1, updated_at = NOW() WHERE id = $2`,
 				errMsg, jobID,
 			)
-			fmt.Printf("[X] Job %s FAILED: Could not parse Groq output.\n", jobID)
+			fmt.Printf("[Worker %d][X] Job %s FAILED: Could not parse Groq output.\n", id, jobID)
 			continue
 		}
 
@@ -208,10 +203,42 @@ func main() {
 			finalResultBytes, jobID,
 		)
 		if err != nil {
-			log.Printf("[-] Failed to update completed state for job %s: %v\n", jobID, err)
+			log.Printf("[Worker %d][-] Failed to update completed state for job %s: %v\n", id, jobID, err)
 		} else {
-			fmt.Printf("[✓] Job %s completed in %.2fs | model: %s | tokens: %d\n",
-				jobID, duration, groqResp.Model, groqResp.Usage.TotalTokens)
+			fmt.Printf("[Worker %d][✓] Job %s completed in %.2fs | model: %s | tokens: %d\n",
+				id, jobID, duration, groqResp.Model, groqResp.Usage.TotalTokens)
 		}
 	}
+}
+
+func main() {
+	fmt.Println("JobQueue Worker Engine initialized...")
+
+	// Read Groq API key from environment variable
+	groqAPIKey := os.Getenv("GROQ_API_KEY")
+	if groqAPIKey == "" {
+		log.Fatal("GROQ_API_KEY environment variable is not set")
+	}
+
+	// Read concurrency from env, default to 3
+	concurrency := 3
+	if val := os.Getenv("WORKER_CONCURRENCY"); val != "" {
+		if n, err := strconv.Atoi(val); err == nil && n > 0 {
+			concurrency = n
+		}
+	}
+
+	fmt.Printf("Starting %d concurrent worker goroutines...\n", concurrency)
+
+	var wg sync.WaitGroup
+	for i := 1; i <= concurrency; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			processJobs(id, groqAPIKey)
+		}(i)
+	}
+
+	// Block forever — goroutines run indefinitely
+	wg.Wait()
 }

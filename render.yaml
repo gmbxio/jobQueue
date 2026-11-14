@@ -1,0 +1,91 @@
+services:
+  # ── API Server ──────────────────────────────────────────────────────────────
+  - type: web
+    name: jobqueue-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile.api
+    plan: free
+    envVars:
+      - key: DB_HOST
+        fromDatabase:
+          name: jobqueue-postgres
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: jobqueue-postgres
+          property: port
+      - key: DB_USER
+        fromDatabase:
+          name: jobqueue-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: jobqueue-postgres
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: jobqueue-postgres
+          property: database
+      - key: REDIS_HOST
+        fromService:
+          name: jobqueue-redis
+          type: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: jobqueue-redis
+          type: redis
+          property: port
+
+  # ── Worker (3 goroutines via WORKER_CONCURRENCY) ────────────────────────────
+  - type: worker
+    name: jobqueue-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile.worker
+    plan: free
+    envVars:
+      - key: WORKER_CONCURRENCY
+        value: "3"
+      - key: GROQ_API_KEY
+        sync: false          # Set this manually in the Render dashboard
+      - key: DB_HOST
+        fromDatabase:
+          name: jobqueue-postgres
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: jobqueue-postgres
+          property: port
+      - key: DB_USER
+        fromDatabase:
+          name: jobqueue-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: jobqueue-postgres
+          property: password
+      - key: DB_NAME
+        fromDatabase:
+          name: jobqueue-postgres
+          property: database
+      - key: REDIS_HOST
+        fromService:
+          name: jobqueue-redis
+          type: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          name: jobqueue-redis
+          type: redis
+          property: port
+
+databases:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  - name: jobqueue-postgres
+    plan: free
+    databaseName: job_db
+    user: postgres
+
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  - name: jobqueue-redis
+    plan: free

@@ -1,4 +1,10 @@
 services:
+  # ── Redis ────────────────────────────────────────────────────────────────────
+  - type: redis
+    name: jobqueue-redis
+    plan: free
+    ipAllowList: []
+
   # ── API Server ──────────────────────────────────────────────────────────────
   - type: web
     name: jobqueue-api
@@ -85,7 +91,3 @@ databases:
     plan: free
     databaseName: job_db
     user: jobqueue_user
-
-  # ── Redis ────────────────────────────────────────────────────────────────────
-  - name: jobqueue-redis
-    plan: free

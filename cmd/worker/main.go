@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/gmbxio/jobQueue/internal/db"
@@ -230,15 +229,22 @@ func main() {
 
 	fmt.Printf("Starting %d concurrent worker goroutines...\n", concurrency)
 
-	var wg sync.WaitGroup
 	for i := 1; i <= concurrency; i++ {
-		wg.Add(1)
 		go func(id int) {
-			defer wg.Done()
 			processJobs(id, groqAPIKey)
 		}(i)
 	}
 
-	// Block forever — goroutines run indefinitely
-	wg.Wait()
+	// Minimal health-check HTTP server so Render's free "web" service type
+	// keeps this process alive. The real work happens in the goroutines above.
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8081"
+	}
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, "worker ok")
+	})
+	fmt.Printf("Health-check server listening on :%s\n", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }

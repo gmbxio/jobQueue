@@ -48,12 +48,13 @@ services:
           type: redis
           property: port
 
-  # ── Worker (3 goroutines via WORKER_CONCURRENCY) ────────────────────────────
-  - type: worker
+  # ── Worker (disguised as web service for free tier) ─────────────────────────
+  - type: web
     name: jobqueue-worker
     runtime: docker
     dockerfilePath: ./Dockerfile.worker
     plan: free
+    healthCheckPath: /health
     envVars:
       - key: WORKER_CONCURRENCY
         value: "3"
